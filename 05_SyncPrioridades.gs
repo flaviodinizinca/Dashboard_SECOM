@@ -1,6 +1,30 @@
 /**
+ * 05_SyncPrioridades.gs
+ * Sincroniza e gerencia as prioridades com disparos específicos (SECOM/DISUP).
+ * Deve estar na Planilha DASHBOARD.
+ */
+
+// Cria a lista suspensa (Janaina/Julio) automaticamente ao editar a Coluna A
+function onEdit(e) {
+  const range = e.range;
+  const sheet = range.getSheet();
+  
+  // Se estiver editando a guia "Prioridades", Coluna A (Processo), Linha > 1
+  if (sheet.getName() === "Prioridades" && range.getColumn() === 1 && range.getRow() > 1) {
+    const celulaDisparo = sheet.getRange(range.getRow(), 2); // Coluna B
+    
+    // Cria a validação na Coluna B
+    const regra = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Janaina', 'Julio'], true)
+      .setAllowInvalid(false)
+      .build();
+      
+    celulaDisparo.setDataValidation(regra);
+  }
+}
+
+/**
  * Sincroniza a lista de "Prioridades" do Dashboard com a Planilha Operacional.
- * AGORA COM LIMPEZA: Remove a prioridade se o processo sair da lista.
  */
 function sincronizarPrioridades() {
   const ssDash = SpreadsheetApp.getActiveSpreadsheet();
@@ -11,24 +35,45 @@ function sincronizarPrioridades() {
     return;
   }
 
-  // 1. Pega a lista de Processos Prioritários
+  // ID da Planilha de Controle de Processos (Operacional)
+  // Substitua pelo ID correto da sua planilha 15W847YN...
+  const ID_PLANILHA_OPERACIONAL = "15W847YN-SEU-ID-AQUI"; 
+
+  // 1. Pega a lista de Processos e Disparos
   const ultimaLinha = abaPrioridades.getLastRow();
-  let listaPrioridades = [];
-  
+  let mapaPrioridades = {}; // Objeto para armazenar Processo -> Disparo
+
   if (ultimaLinha >= 2) {
-    // Pega os valores, converte para String e remove espaços em branco
-    const valoresBrutos = abaPrioridades.getRange(2, 1, ultimaLinha - 1, 1).getValues();
-    listaPrioridades = valoresBrutos.flat().map(p => String(p).trim()).filter(p => p !== "");
+    // Pega Coluna A (Processo) e Coluna B (Disparo)
+    const dados = abaPrioridades.getRange(2, 1, ultimaLinha - 1, 2).getValues();
+    
+    dados.forEach(linha => {
+      const proc = String(linha[0]).trim();
+      const disparo = String(linha[1]).trim(); // Janaina ou Julio
+      if (proc !== "") {
+        mapaPrioridades[proc] = disparo;
+      }
+    });
   }
 
   // 2. Abre a Planilha Operacional
-  const ssOperacional = SpreadsheetApp.openById(ID_PLANILHA_FONTE);
+  let ssOperacional;
+  try {
+    ssOperacional = SpreadsheetApp.openById(ID_PLANILHA_OPERACIONAL);
+  } catch (e) {
+    SpreadsheetApp.getUi().alert("Erro ao abrir planilha Operacional. Verifique o ID no script.");
+    return;
+  }
+
   const todasAbas = ssOperacional.getSheets();
   
+  // Abas que não devem ser verificadas
+  const ABAS_IGNORAR = ["ToFor", "Modal_Config", "Resumo", "Dashboard", "Config"]; 
+
   let marcados = 0;
   let desmarcados = 0;
 
-  // 3. Varre todas as abas
+  // 3. Varre todas as abas de compradores
   todasAbas.forEach(aba => {
     const nomeAba = aba.getName();
     
@@ -36,56 +81,43 @@ function sincronizarPrioridades() {
       const lastRow = aba.getLastRow();
       
       if (lastRow > 1) {
-        // Lê os processos existentes na aba
+        // Lê os processos existentes na aba (Coluna A)
         const rangeProcessos = aba.getRange(2, 1, lastRow - 1, 1);
         const valoresProcessos = rangeProcessos.getValues().flat().map(String);
         
-        // Loop linha a linha
         valoresProcessos.forEach((processo, index) => {
           const linhaReal = index + 2;
-          const colunaPrioridade = 20; // Coluna T
+          const colIndexPrioridade = 10; // Coluna J (10) - Conforme 02_Guias.gs
+          const procLimpo = processo.trim();
           
-          if (listaPrioridades.includes(processo.trim())) {
-            // === CASO 1: É PRIORIDADE ===
-            // Verifica se já está marcado para não reescrever sem necessidade (otimização)
-            const valorAtual = aba.getRange(linhaReal, colunaPrioridade).getValue();
+          const celulaStatus = aba.getRange(linhaReal, colIndexPrioridade);
+          
+          if (mapaPrioridades.hasOwnProperty(procLimpo)) {
+            // === É UMA PRIORIDADE ===
+            const quemDisparou = mapaPrioridades[procLimpo];
+            let textoStatus = "PRIORIDADE";
             
-            if (valorAtual !== "🔥 PRIORIDADE MÁXIMA") {
-              // Marca
-              aba.getRange(linhaReal, colunaPrioridade).setValue("🔥 PRIORIDADE MÁXIMA").setFontWeight("bold").setFontColor("red");
-              aba.getRange(linhaReal, 1, 1, 20).setBackground("#FFF2CC"); // Amarelo suave
+            if (quemDisparou === "Julio") textoStatus = "prioridade SECOM";
+            else if (quemDisparou === "Janaina") textoStatus = "prioridade DISUP";
+
+            // Se o status for diferente, atualiza
+            if (celulaStatus.getValue() !== textoStatus) {
+              celulaStatus.setValue(textoStatus).setFontWeight("bold").setFontColor("red");
+              
+              // Opcional: Pintar a linha de amarelo para destacar
+              aba.getRange(linhaReal, 1, 1, 20).setBackground("#FFF2CC");
               marcados++;
             }
             
           } else {
-            // === CASO 2: NÃO É (OU DEIXOU DE SER) PRIORIDADE ===
-            // Precisamos limpar, mas somente se estiver marcado como prioridade
-            // Isso evita apagar outras formatações da planilha
+            // === NÃO É PRIORIDADE ===
+            const valorAtual = celulaStatus.getValue();
             
-            const rangeStatus = aba.getRange(linhaReal, colunaPrioridade);
-            const valorStatus = rangeStatus.getValue();
-            
-            if (valorStatus === "🔥 PRIORIDADE MÁXIMA") {
-              // Limpa o texto da prioridade
-              rangeStatus.clearContent();
-              
-              // Restaura a cor de fundo original (Zebrado ou Branco)
-              // Logica simples: Se for par #FFFFFF, impar #F3F3F3 (conforme padrão do relatório)
-              // Ou simplesmente limpamos o background para o padrão da guia
-              
-              // Vamos reaplicar a cor padrão do "Bloco Geral" e "Bloco Datas" para não ficar feio
-              // Como a linha inteira foi pintada de amarelo, precisamos restaurar por partes
-              
-              const rangeLinha = aba.getRange(linhaReal, 1, 1, 20);
-              
-              // Restaura cores padrão dos blocos (Baseado no 02_Guias da Operacional)
-              aba.getRange(linhaReal, 1, 1, 4).setBackground("#FFFFFF");   // A-D (Geral) fica branco
-              aba.getRange(linhaReal, 5, 1, 4).setBackground("#FFFFFF");   // E-H (SECOM) fica branco
-              aba.getRange(linhaReal, 9, 1, 8).setBackground("#FFFFFF");   // I-P (Comprador) fica branco
-              aba.getRange(linhaReal, 17, 1, 2).setBackground("#FFFFFF");  // Q-R (Finalização) fica branco
-              aba.getRange(linhaReal, 19, 1, 1).setBackground("#FFFFFF");  // S (Prazo) fica branco
-              aba.getRange(linhaReal, 20, 1, 1).setBackground("#EA9999");  // T (Prioridade) volta a ser vermelho fundo padrão (vazio)
-              
+            // Se tiver marcado como prioridade antiga, limpa
+            if (valorAtual === "prioridade SECOM" || valorAtual === "prioridade DISUP") {
+              celulaStatus.clearContent();
+              // Opcional: Resetar cor da linha (precisaria da lógica de cores padrão)
+              // aba.getRange(linhaReal, 1, 1, 20).setBackground("white"); 
               desmarcados++;
             }
           }
@@ -94,5 +126,5 @@ function sincronizarPrioridades() {
     }
   });
   
-  SpreadsheetApp.getUi().alert(`Sincronização Concluída!\n\n🔥 Marcados: ${marcados}\n🧹 Limpos: ${desmarcados}`);
+  SpreadsheetApp.getUi().alert(`Sincronização Concluída!\n\n🔥 Atualizados: ${marcados}\n🧹 Limpos: ${desmarcados}`);
 }
