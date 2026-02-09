@@ -3,7 +3,7 @@
  */
 
 const ID_PLANILHA_FONTE = "1n6l2ofxEvQTrZ49IY7b30U_dcUqb-MuAbVaW890S6ng";
-const ABAS_IGNORAR = ["Modal_Config", "Sobre", "Template", "Página1"];
+const ABAS_IGNORAR = ["Modal_Config", "Sobre", "Template", "Página1", "ToFor"];
 
 // Nomes das Abas de Destino
 const ABA_RELATORIO = "Relatório Geral";

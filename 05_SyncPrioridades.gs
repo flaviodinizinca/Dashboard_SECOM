@@ -37,7 +37,7 @@ function sincronizarPrioridades() {
 
   // ID da Planilha de Controle de Processos (Operacional)
   // Substitua pelo ID correto da sua planilha 15W847YN...
-  const ID_PLANILHA_OPERACIONAL = "15W847YN-SEU-ID-AQUI"; 
+  const ID_PLANILHA_OPERACIONAL = "1n6l2ofxEvQTrZ49IY7b30U_dcUqb-MuAbVaW890S6ng"; 
 
   // 1. Pega a lista de Processos e Disparos
   const ultimaLinha = abaPrioridades.getLastRow();
