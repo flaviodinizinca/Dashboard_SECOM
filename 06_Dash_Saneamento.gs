@@ -1,83 +1,52 @@
 /**
  * 06_Dash_Saneamento.gs
- * Extrai dados exclusivamente das abas de SANEAMENTO.
+ * Agora aponta para a PLANILHA EXCLUSIVA DE SANEAMENTO.
  */
-
 function atualizarDashboardSaneamento() {
   const ssDash = SpreadsheetApp.getActiveSpreadsheet();
   
-  // ID DA PLANILHA DE CONTROLE (Fornecido por você)
-  const ID_PLANILHA_CONTROLE = "1n6l2ofxEvQTrZ49IY7b30U_dcUqb-MuAbVaW890S6ng"; 
+  // ID DA NOVA PLANILHA DE SANEAMENTO
+  const ID_PLANILHA_SANEAMENTO = "1TxyCWwg9IBZpEh9g6E_PgNUx5ucR_CwlTCaS_eXihTs"; 
 
-  let ssControle;
+  let ssSan;
   try {
-    ssControle = SpreadsheetApp.openById(ID_PLANILHA_CONTROLE);
+    ssSan = SpreadsheetApp.openById(ID_PLANILHA_SANEAMENTO);
   } catch (e) {
-    SpreadsheetApp.getUi().alert(
-      "Erro ao abrir planilha de Controle.\n" +
-      "Verifique se você tem permissão de acesso a ela.\n" +
-      "ID: " + ID_PLANILHA_CONTROLE + "\n" +
-      "Detalhe: " + e.message
-    );
+    SpreadsheetApp.getUi().alert("Erro ao abrir Planilha Saneamento: " + e.message);
     return;
   }
 
-  const todasAbas = ssControle.getSheets();
-  let dadosSaneamento = [];
+  const todasAbas = ssSan.getSheets();
+  let dados = [];
+
+  // Pula abas de configuração
+  const ignorar = ["Config_Saneamento", "Página1"]; 
 
   todasAbas.forEach(aba => {
-    // Procura abas que tenham "(Saneamento)" no nome
-    if (aba.getName().includes("(Saneamento)")) {
+    if (!ignorar.includes(aba.getName())) {
       const lastRow = aba.getLastRow();
-      
-      // Verifica se tem dados além do cabeçalho
       if (lastRow > 1) {
-        try {
-          // Pega colunas A até K (11 colunas) conforme estrutura definida
-          const valores = aba.getRange(2, 1, lastRow - 1, 11).getValues();
-          
-          valores.forEach(linha => {
-            const responsavel = aba.getName().replace(" (Saneamento)", "").trim();
-            
-            dadosSaneamento.push([
-              responsavel, 
-              linha[0], // Processo
-              linha[1], // Data Chegada
-              linha[4], // Objeto
-              linha[8], // Encerrado?
-              linha[10] // Status
-            ]);
-          });
-        } catch (erroLeitura) {
-          console.error("Erro ao ler aba " + aba.getName() + ": " + erroLeitura.message);
-        }
+        const valores = aba.getRange(2, 1, lastRow - 1, 11).getValues();
+        valores.forEach(lin => {
+          dados.push([
+            aba.getName(), // Responsável
+            lin[0], lin[1], lin[4], lin[8], lin[10] // Proc, Data, Obj, Encerrado, Status
+          ]);
+        });
       }
     }
   });
 
-  // Atualiza a aba de Resumo no Dashboard
+  // Atualiza Resumo no Dashboard
   let abaResumo = ssDash.getSheetByName("Resumo Saneamento");
-  if (!abaResumo) {
-    abaResumo = ssDash.insertSheet("Resumo Saneamento");
-  } else {
-    abaResumo.clear();
+  if (!abaResumo) abaResumo = ssDash.insertSheet("Resumo Saneamento");
+  else abaResumo.clear();
+
+  const header = ["Responsável", "Processo", "Data", "Objeto", "Encerrado?", "Status"];
+  abaResumo.getRange(1,1,1,6).setValues([header]).setFontWeight("bold").setBackground("#E69138").setFontColor("white");
+  
+  if (dados.length > 0) {
+    abaResumo.getRange(2, 1, dados.length, 6).setValues(dados);
+    abaResumo.getRange(2, 3, dados.length, 1).setNumberFormat("dd/mm/yyyy");
   }
-
-  const cabecalho = ["Responsável", "Processo", "Data Chegada", "Objeto", "Encerrado?", "Status"];
-  abaResumo.getRange(1, 1, 1, cabecalho.length)
-    .setValues([cabecalho])
-    .setFontWeight("bold")
-    .setBackground("#E69138") // Laranja Saneamento
-    .setFontColor("white");
-
-  if (dadosSaneamento.length > 0) {
-    abaResumo.getRange(2, 1, dadosSaneamento.length, cabecalho.length).setValues(dadosSaneamento);
-    abaResumo.autoResizeColumns(1, cabecalho.length);
-    
-    // Formatação de Dados
-    abaResumo.getRange(2, 2, dadosSaneamento.length, 1).setNumberFormat("@"); // Processo como texto
-    abaResumo.getRange(2, 3, dadosSaneamento.length, 1).setNumberFormat("dd/mm/yyyy"); // Data
-  }
-
-  SpreadsheetApp.getUi().alert(`Dashboard de Saneamento atualizado com ${dadosSaneamento.length} registros.`);
 }
